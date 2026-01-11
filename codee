@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tempo dApp - Minting Portal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/index.umd.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; }
+        button { background: #3d5afe; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; }
+        button:hover { background: #2a3eb1; }
+        #status { color: #666; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Tempo NFT Minter</h1>
+    <p id="status">Wallet not connected</p>
+    <button onclick="connectWallet()">Connect Rabby/MetaMask</button>
+    
+    <hr>
+    
+    <h3>Mint your NFT</h3>
+    <input type="number" id="mintAmount" value="1" min="1" style="width: 50px; padding: 5px;">
+    <button onclick="mintNFT()">Mint Now</button>
+    <p id="txStatus"></p>
+</div>
+
+<script>
+    let signer;
+    let contract;
+
+    // YOUR DATA
+    const contractAddress = "0xD84465DC85e23f18dC60a5975b4562d6a5B6DcbB";
+    const tempoChainId = "0xa5bd"; // Hex for 42429
+
+    // Simplified ABI for the functions we need
+    const abi = [
+        "function mint(uint256 quantity) public",
+        "function totalSupply() view returns (uint256)",
+        "function symbol() view returns (string)"
+    ];
+
+    async function connectWallet() {
+        if (!window.ethereum) {
+            alert("Please install Rabby Wallet!");
+            return;
+        }
+
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            
+            // 1. Request accounts
+            await provider.send("eth_requestAccounts", []);
+            
+            // 2. Switch to Tempo Testnet (Rabby will handle this popup)
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: tempoChainId }],
+            }).catch(async (err) => {
+                if (err.code === 4902) {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: tempoChainId,
+                            chainName: 'Tempo Testnet',
+                            nativeCurrency: { name: 'USD', symbol: 'USD', decimals: 18 },
+                            rpcUrls: ['https://rpc.testnet.tempo.xyz'],
+                            blockExplorerUrls: ['https://explore.tempo.xyz']
+                        }]
+                    });
+                }
+            });
+
+            signer = await provider.getSigner();
+            const address = await signer.getAddress();
+            
+            // Initialize contract with signer for writing
+            contract = new ethers.Contract(contractAddress, abi, signer);
+            
+            document.getElementById("status").innerText = "Connected: " + address;
+        } catch (error) {
+            console.error(error);
+            alert("Connection failed!");
+        }
+    }
+
+    async function mintNFT() {
+        if (!contract) {
+            alert("Connect wallet first!");
+            return;
+        }
+
+        const quantity = document.getElementById("mintAmount").value;
+        const statusDiv = document.getElementById("txStatus");
+
+        try {
+            statusDiv.innerText = "Check your wallet to confirm...";
+            
+            // Call the mint function
+            const tx = await contract.mint(quantity);
+            
+            statusDiv.innerText = "Transaction sent! Waiting for Tempo...";
+            
+            // Wait for 1 confirmation
+            await tx.wait();
+            
+            statusDiv.innerHTML = `Success! <a href="https://explore.tempo.xyz/tx/${tx.hash}" target="_blank">View on Explorer</a>`;
+        } catch (error) {
+            console.error(error);
+            statusDiv.innerText = "Error: " + (error.reason || "Transaction failed");
+        }
+    }
+</script>
+</body>
+</html>
